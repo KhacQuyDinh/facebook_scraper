@@ -1,0 +1,15 @@
+credentials:
+    email: ""
+    password: ""
+
+args:
+    # default values are set in codes not in this file
+    file_links: "/home/khacquy/Documents/facebook-post-scraper-master/file_links_test.txt" #path to file containing links of groups, type=string, required=True
+    len: 4 #Number of Posts you want to scrape, type=int, required=True
+    infinite: 0 #Scroll until the end of the page (1 = infinite) (Default is 0), type=int, default=0
+    usage: "CSV" #What to do with the data: Print on Screen (PS), Write to Text File (WT), Write CSV file, default="CSV"
+    comments: True #Scrape ALL Comments of Posts (True/False) (Default is False).
+                 #When enabled for pages where there are a lot of comments it can
+                 #take a while, type=string, default=False
+    
+     
