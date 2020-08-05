@@ -10,19 +10,13 @@
 Scrape Facebook Public Posts without using Facebook API 
 
 ## What It can Do
-
-- Scrape Public Post Text
-    - Raw Text
-    - Picture
-    - Link
-- Scrape Likes and Top 3 React Numbers
-- Scrape Public Post Comments 
-    - Links in Comments
-    - Pictures in Comments
+- Get data including the following fields:
+['PostId', 'Group', 'Date', 'Post', 'Link', 'Image', 'Comments', 'Shares', 'Reaction']
 
 ## Install Requirements
 
-Please make sure chrome is installed and ```chromedriver``` is placed in the same directory as the file
+Please make sure chrome is installed and ```chromedriver``` is placed in the same directory as the file.
+
 ```chromedriver``` must have the same version as Chrome browser using (help -> about to show this version).
 
 Find out which version of ```chromedriver``` you need to download in this link [Chrome Web Driver](http://chromedriver.chromium.org/downloads).
@@ -65,6 +59,7 @@ optional arguments:
 ```
 ##### The new option which is currently used in code (can be changed by coding skills)
 ###### Use config.yaml with params
+```
 credentials:
     email: ""
     password: ""
@@ -78,8 +73,7 @@ args:
     comments: True #Scrape ALL Comments of Posts (True/False) (Default is False).
                  #When enabled for pages where there are a lot of comments it can
                  #take a while, type=string, default=False
-    
-     
+```   
 
 #### 2. Use ```extract()``` to grab list of posts for additional parsing
 
