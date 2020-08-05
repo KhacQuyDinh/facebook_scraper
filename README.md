@@ -1,6 +1,6 @@
 # facebook_scraper
 ## This project is a modified version of Facebook_scraper (https://github.com/kevinzg/facebook-scraper)
-## The instructions below are given in the original repo (https://github.com/kevinzg/facebook-scraper)
+## The instructions below are given in the origional repo (https://github.com/kevinzg/facebook-scraper)
 
 ## MIT License
  
