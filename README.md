@@ -58,7 +58,7 @@ optional arguments:
 
 ```
 ##### The new option which is currently used in code (can be changed by coding skills)
-###### Use config.yaml with params
+###### Use config.yaml with params described as follows
 ```
 credentials:
     email: ""
@@ -74,6 +74,8 @@ args:
                  #When enabled for pages where there are a lot of comments it can
                  #take a while, type=string, default=False
 ```   
+
+###### Type: python3 scraper.py
 
 #### 2. Use ```extract()``` to grab list of posts for additional parsing
 
