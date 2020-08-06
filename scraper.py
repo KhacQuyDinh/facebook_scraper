@@ -17,11 +17,10 @@ import re
 #done
 def _extract_post_date(item):
     date = ""
-    postDate = item.find(class_="_5pcq")
+    postDate = item.find(class_="_5ptz")
     if postDate:
-        if postDate.abbr:
-            post_data_utime = postDate.abbr["data-utime"]
-            date = datetime.utcfromtimestamp(int(post_data_utime)).strftime("%d-%m-%Y")
+        post_data_utime = postDate["data-utime"]
+        date = datetime.utcfromtimestamp(int(post_data_utime)).strftime("%d-%m-%Y")
     return date
 
 #done
@@ -350,7 +349,7 @@ def extract(page, numOfPost, email, password, infinite_scroll=False, scrape_comm
     })
 
     #  should be in the same folder as file
-    browser = webdriver.Chrome(executable_path="chromedriver", options=option)
+    browser = webdriver.Chrome(executable_path="/home/khacquy/chromedriver_linux64_/chromedriver", options=option)
     _login(browser, email, password) #login or not: comment to not login.
     browser.get(page)
     lenOfPage = _count_needed_scrolls(browser, infinite_scroll, numOfPost)
