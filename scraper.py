@@ -9,14 +9,16 @@ from bs4 import BeautifulSoup as bs
 from datetime import datetime
 import yaml
 import re
+import numpy as np
+import sys
 
 # with open('facebook_credentials.txt') as _file:
 #     email = _file.readline().split('"')[1]
 #     password = _file.readline().split('"')[1]
 
 #done
-def _extract_post_date(item):
-    date = ""
+def _extract_postDate(item):
+    date = None
     postDate = item.find(class_="_5ptz")
     if postDate:
         post_data_utime = postDate["data-utime"]
@@ -26,7 +28,7 @@ def _extract_post_date(item):
 #done
 def _extract_post_text(item):
     actualPost = item.find(attrs={"data-testid": "post_message"})
-    text = ""
+    text = None
     if actualPost:
         paragraphs = actualPost.find_all('p')
         text = ""
@@ -37,7 +39,7 @@ def _extract_post_text(item):
 #done
 def _extract_link(item):
     postLink = item.find(class_="_6ks")
-    link = ""
+    link = None
     if postLink:
         if postLink.a:
             link = postLink.a['href']
@@ -49,17 +51,22 @@ link to a specific long post
 """
 def _extract_post_id(item):
     postId = item.find(class_="_5pcq")
-    post_id = ""
+    post_id = None
     if postId:
         post_id = f"https://www.facebook.com{postId['href']}"
     return post_id
 
 #done
+#_2a2q _65sr
 def _extract_image(item):
     postPic = item.find(class_="scaledImageFitWidth img")
-    image = ""
+    image = None
     if postPic:
         image = postPic['src']
+    else:
+        postPic = item.find("a", class_="_5dec _xcx")
+        if postPic:
+            image =  postPic['data-ploi']
     return image
 
 #fixed
@@ -222,7 +229,7 @@ def _extract_html(page, bs_data):
 
     for item in k:
         postDict = dict()
-        postDict['Date'] = _extract_post_date(item)
+        postDict['Date'] = _extract_postDate(item)
         postDict['Group'] = page
         postDict['Post'] = _extract_post_text(item)
         postDict['Link'] = _extract_link(item)
@@ -244,9 +251,12 @@ def _extract_html(page, bs_data):
 def _login(browser, email, password):
     browser.get("http://facebook.com")
     browser.maximize_window()
-    browser.find_element_by_name("email").send_keys(email)
-    browser.find_element_by_name("pass").send_keys(password)
-    browser.find_element_by_id('loginbutton').click()
+    email_box = browser.find_element_by_name("email") or browser.find_element_by_id("email")
+    email_box.send_keys(email)
+    pass_box = browser.find_element_by_name("pass") or browser.find_element_by_id("pass")
+    pass_box.send_keys(password)
+    loginButton = browser.find_element_by_name("login") or browser.find_element_by_id("loginbutton")
+    loginButton.click()
     time.sleep(10)
 
 """
@@ -265,11 +275,21 @@ def _count_needed_scrolls(browser, infinite_scroll, numOfPost):
     print("Number Of Scrolls Needed " + str(lenOfPage))
     return lenOfPage
 
+def is_reached_postDate(limit_date, browser):
+    # Now that the page is fully scrolled, grab the source code.
+    source_data = browser.page_source
+
+    # Throw your source into BeautifulSoup and start parsing!
+    bs_data = bs(source_data, 'html.parser')
+
+    last_post = bs_data.find_all(class_="_5pcr userContentWrapper")[-1]
+    last_postDate = _extract_postDate(last_post)
+    return last_postDate <= limit_date
 
 """
 after scroll, all elements in html will be shown up
 """
-def _scroll(browser, infinite_scroll, lenOfPage):
+def _scroll(browser, infinite_scroll, lenOfPage, limit_postDate):
     lastCount = 0
     match = False
 
@@ -288,6 +308,10 @@ def _scroll(browser, infinite_scroll, lenOfPage):
             lenOfPage = browser.execute_script(
                 "window.scrollTo(0, document.body.scrollHeight);var lenOfPage=document.body.scrollHeight;return "
                 "lenOfPage;")
+
+            if is_reached_postDate(limit_postDate, browser):
+                sys.exit(0)
+                break
         else:
             # scroll to the end of page
             browser.execute_script(
@@ -337,23 +361,11 @@ def show_up_SeeMoreCmt(browser):
             # pass
             print(e)
 
-def extract(page, numOfPost, email, password, infinite_scroll=False, scrape_comment=False):
-    option = Options()
-    option.add_argument("--disable-infobars")
-    option.add_argument("start-maximized")
-    option.add_argument("--disable-extensions")
-
-    # Pass the argument 1 to allow and 2 to block
-    option.add_experimental_option("prefs", {
-        "profile.default_content_setting_values.notifications": 1
-    })
-
-    #  should be in the same folder as file
-    browser = webdriver.Chrome(executable_path="/home/khacquy/chromedriver_linux64_/chromedriver", options=option)
-    _login(browser, email, password) #login or not: comment to not login.
-    browser.get(page)
+def extract(browser, page, numOfPost, limit_postDate, infinite_scroll=False, scrape_comment=False):
+    assert limit_postDate, "limit_postDate must be defined"
+    
     lenOfPage = _count_needed_scrolls(browser, infinite_scroll, numOfPost)
-    _scroll(browser, infinite_scroll, lenOfPage)
+    _scroll(browser, infinite_scroll, lenOfPage, limit_postDate)
 
     # click on all the comments to scrape them all!
     # TODO: need to add more support for additional second level comments
@@ -371,7 +383,6 @@ def extract(page, numOfPost, email, password, infinite_scroll=False, scrape_comm
     bs_data = bs(source_data, 'html.parser')
 
     postBigDict, name_group = _extract_html(page, bs_data)
-    browser.close()
 
     return postBigDict, name_group
 
@@ -380,6 +391,7 @@ def crawl_input_parser():
     required_parser = parser.add_argument_group("required arguments")
     required_parser.add_argument('-page', '-p', help="The Facebook Public Page you want to scrape", required=True)
     required_parser.add_argument('-len', '-l', help="Number of Posts you want to scrape", type=int, required=True)
+    required_parser.add_argument('-limit_postDate', '-d', help="The oldest date posts appeared", required=True)
     optional_parser = parser.add_argument_group("optional arguments")
     optional_parser.add_argument('-infinite', '-i',
                                  help="Scroll until the end of the page (1 = infinite) (Default is 0)", type=int,
@@ -412,9 +424,24 @@ def crawl_input_parser():
         email = _file.readline().split('"')[1]
         password = _file.readline().split('"')[1]
 
-    postBigDict, name_group = extract(page=args.page, numOfPost=args.len\
+    option = Options()
+    option.add_argument("--disable-infobars")
+    option.add_argument("start-maximized")
+    option.add_argument("--disable-extensions")
+
+    # Pass the argument 1 to allow and 2 to block
+    option.add_experimental_option("prefs", {
+        "profile.default_content_setting_values.notifications": 1
+    })
+
+    #  should be in the same folder as file
+    browser = webdriver.Chrome(executable_path="/home/khacquy/chromedriver_linux64_/chromedriver", options=option)
+    _login(browser, email, password) #login or not: comment to not login.
+    browser.get(link)
+
+    postBigDict, name_group = extract(browser=browser, page=link, numOfPost=args.len\
                           , infinite_scroll=infinite, scrape_comment=scrape_comment\
-                          , email=email, password=password)
+                          , limit_postDate=args.limit_postDate)
 
 
     #TODO: rewrite parser
@@ -439,6 +466,7 @@ def crawl_input_parser():
         for post in postBigDict:
             print("\n")
 
+    browser.close()
     print("Finished")
 
 def crawl_input_files():
@@ -451,18 +479,36 @@ def crawl_input_files():
 
     args = configs['args']
     infinite = args['infinite'] or 0
+    limit_postDate = args['limit_postDate']
+    assert limit_postDate, "limit_postDate is required"
     scrape_comment = args['comments'] or False
     
+    option = Options()
+    option.add_argument("--disable-infobars")
+    option.add_argument("start-maximized")
+    option.add_argument("--disable-extensions")
+
+    # Pass the argument 1 to allow and 2 to block
+    option.add_experimental_option("prefs", {
+        "profile.default_content_setting_values.notifications": 1
+    })
+
+    #  should be in the same folder as file
+    browser = webdriver.Chrome(executable_path="/home/khacquy/chromedriver_linux64_/chromedriver", options=option)
+    _login(browser, email, password) #login or not: comment to not login.
+
     id_page = 0
     with open(args["file_links"], 'r') as fLinks:
         for link in fLinks.readlines():
             id_page += 1
             link = link.strip()
             link = link[:-1] if link[-1] == "/" else link
-
-            postBigDict, name_group = extract(page=link, numOfPost=args['len']\
+            
+            browser.get(link)
+            
+            postBigDict, name_group = extract(browser=browser, page=link, numOfPost=args['len']\
                                 , infinite_scroll=infinite, scrape_comment=scrape_comment\
-                                , email=email, password=password)
+                                , limit_postDate=limit_postDate)
 
             #remove noise chars
             fout_name = re.sub("\W+", "_", link.split('/')[-1].lower())
@@ -496,6 +542,8 @@ def crawl_input_files():
                     print("\n")
 
             print(f"Finished {link}")
+            
+    browser.close()
 
 if __name__ == "__main__":
     # crawl_input_parser()
