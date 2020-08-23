@@ -5,6 +5,7 @@ import csv
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+import bs4
 from bs4 import BeautifulSoup as bs
 from datetime import datetime
 import yaml
@@ -28,12 +29,34 @@ def _extract_postDate(item):
 #done
 def _extract_post_text(item):
     actualPost = item.find(attrs={"data-testid": "post_message"})
-    text = None
+    text = ""
     if actualPost:
         paragraphs = actualPost.find_all('p')
         text = ""
         for paragraph in paragraphs:
-            text += paragraph.text #no need additional space because it already satisfied
+            all_elems = []
+            stack = []
+            contents = paragraph.contents
+            for content in contents:
+                if type(content) == bs4.element.NavigableString:
+                    all_elems.append(content.strip())
+                elif type(content) == bs4.element.Tag:
+                    stack.append(content)
+                    while len(stack):
+                        st_elem = stack.pop(0)
+                        if type(st_elem) == bs4.element.Tag\
+                           and len(st_elem.contents):
+                            for item in list(map(lambda x : str(x).strip(), content.contents)):
+                                if item not in all_elems:
+                                    all_elems.append(item) 
+                            stack += st_elem.contents
+
+            content_str = "\n".join(list(map(str, all_elems)))
+            content_str = re.sub(r"<.*>", "\n", content_str).strip()
+            text += content_str.strip() + "\n"
+    #print(text)
+    while text.find("\n\n") != -1:
+        text = text.replace("\n\n", "\n")
     return text
 
 #done
@@ -44,6 +67,13 @@ def _extract_link(item):
         if postLink.a:
             link = postLink.a['href']
     return link
+    
+def _extract_author(item):
+    author_tag = item.find('span', class_="fwb fcg")
+    author_name = None
+    if author_tag:
+        author_name = author_tag.a.text
+    return author_name
 
 #done
 """
@@ -209,7 +239,7 @@ def _extract_reaction(item):
     return reaction
 
 
-def _extract_html(page, bs_data):
+def _extract_html(page, bs_data, limit_postDate):
 
     #Add to check
     #Temp file
@@ -229,15 +259,18 @@ def _extract_html(page, bs_data):
 
     for item in k:
         postDict = dict()
-        postDict['Date'] = _extract_postDate(item)
-        postDict['Group'] = page
-        postDict['Post'] = _extract_post_text(item)
-        postDict['Link'] = _extract_link(item)
-        postDict['PostId'] = _extract_post_id(item)
-        postDict['Image'] = _extract_image(item)
-        postDict['Shares'] = _extract_shares(item)
-        postDict['Comments'] = _extract_comments(item)
-        postDict['Reaction'] = _extract_reaction(item)
+        post_date = _extract_postDate(item)
+        if is_valid_postDate(limit_postDate, post_date):
+            postDict['Date'] = post_date
+            postDict['Author'] = _extract_author(item)
+            postDict['Group'] = page
+            postDict['Post'] = _extract_post_text(item)
+            postDict['Link'] = _extract_link(item)
+            postDict['PostId'] = _extract_post_id(item)
+            postDict['Image'] = _extract_image(item)
+            postDict['Shares'] = _extract_shares(item)
+            postDict['Comments'] = _extract_comments(item)
+            postDict['Reaction'] = _extract_reaction(item)
 
         #Add to check
         postBigDict.append(postDict)
@@ -275,7 +308,7 @@ def _count_needed_scrolls(browser, infinite_scroll, numOfPost):
     print("Number Of Scrolls Needed " + str(lenOfPage))
     return lenOfPage
 
-def is_reached_postDate(limit_date, browser):
+def is_valid_postDate_scroll(limit_date, browser):
     # Now that the page is fully scrolled, grab the source code.
     source_data = browser.page_source
 
@@ -284,7 +317,11 @@ def is_reached_postDate(limit_date, browser):
 
     last_post = bs_data.find_all(class_="_5pcr userContentWrapper")[-1]
     last_postDate = _extract_postDate(last_post)
-    return last_postDate <= limit_date
+    return last_postDate >= limit_date
+    
+def is_valid_postDate(limit_date, post_date):
+    return post_date >= limit_date
+    
 
 """
 after scroll, all elements in html will be shown up
@@ -309,9 +346,8 @@ def _scroll(browser, infinite_scroll, lenOfPage, limit_postDate):
                 "window.scrollTo(0, document.body.scrollHeight);var lenOfPage=document.body.scrollHeight;return "
                 "lenOfPage;")
 
-            if is_reached_postDate(limit_postDate, browser):
-                sys.exit(0)
-                break
+            #if not is_valid_postDate_scroll(limit_postDate, browser):
+            #    break
         else:
             # scroll to the end of page
             browser.execute_script(
@@ -382,7 +418,7 @@ def extract(browser, page, numOfPost, limit_postDate, infinite_scroll=False, scr
     # Throw your source into BeautifulSoup and start parsing!
     bs_data = bs(source_data, 'html.parser')
 
-    postBigDict, name_group = _extract_html(page, bs_data)
+    postBigDict, name_group = _extract_html(page, bs_data, limit_postDate)
 
     return postBigDict, name_group
 
@@ -454,10 +490,10 @@ def crawl_input_parser():
         with open(name_group + '.csv', 'w', encoding="utf-8") as csvfile:
            writer = csv.writer(csvfile)
            #writer.writerow(['Post', 'Link', 'Image', 'Comments', 'Shares'])
-           writer.writerow(['PostId', 'Group', 'Date', 'Post', 'Link', 'Image', 'Comments', 'Shares', 'Reaction'])
+           writer.writerow(['PostId', 'Group', 'Date', 'Author', 'Post', 'Link', 'Image', 'Comments', 'Shares', 'Reaction'])
 
            for post in postBigDict:
-              writer.writerow([post['PostId'], post['Group'], post['Date']\
+              writer.writerow([post['PostId'], post['Group'], post['Date'], post['Author']\
                               , post['Post'], post['Link'], post['Image']\
                               , post['Comments'], post['Shares'], post['Reaction']])
               #writer.writerow([post['Post'], post['Link'],post['Image'], post['Comments'], post['Shares']])
@@ -529,10 +565,10 @@ def crawl_input_files():
                 with open(fout_name + '.csv', 'w', encoding="utf-8") as csvfile:
                     writer = csv.writer(csvfile)
                     #writer.writerow(['Post', 'Link', 'Image', 'Comments', 'Shares'])
-                    writer.writerow(['PostId', 'Group', 'Date', 'Post', 'Link', 'Image', 'Comments', 'Shares', 'Reaction'])
+                    writer.writerow(['PostId', 'Group', 'Date', 'Author','Post', 'Link', 'Image', 'Comments', 'Shares', 'Reaction'])
 
                     for post in postBigDict:
-                        writer.writerow([post['PostId'], post['Group'], post['Date']\
+                        writer.writerow([post['PostId'], post['Group'], post['Date'], post['Author']\
                               , post['Post'], post['Link'], post['Image']\
                               , post['Comments'], post['Shares'], post['Reaction']])
                         #writer.writerow([post['Post'], post['Link'],post['Image'], post['Comments'], post['Shares']])
