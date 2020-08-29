@@ -12,6 +12,7 @@ import yaml
 import re
 import numpy as np
 import sys
+from urllib.parse import urljoin
 
 # with open('facebook_credentials.txt') as _file:
 #     email = _file.readline().split('"')[1]
@@ -82,8 +83,11 @@ link to a specific long post
 def _extract_post_id(item):
     postId = item.find(class_="_5pcq")
     post_id = None
-    if postId:
-        post_id = f"https://www.facebook.com{postId['href']}"
+    try:
+        if postId:
+            post_id = f"https://www.facebook.com{postId['href']}"
+    except:
+        pass
     return post_id
 
 #done
@@ -91,12 +95,15 @@ def _extract_post_id(item):
 def _extract_image(item):
     postPic = item.find(class_="scaledImageFitWidth img")
     image = None
-    if postPic:
-        image = postPic['src']
-    else:
-        postPic = item.find("a", class_="_5dec _xcx")
+    try:
         if postPic:
-            image =  postPic['data-ploi']
+            image = postPic['src']
+        else:
+            postPic = item.find("a", class_="_5dec _xcx")
+            if postPic:
+                image =  postPic['data-ploi']
+    except:
+        pass
     return image
 
 #fixed
@@ -106,103 +113,109 @@ including: num_comments, num_shares, num_view(for videos)
 def _extract_shares(item):
     postShare = item.find(class_="_4vn1")
     shares = dict()
-    if postShare:
-        for postShare_child in postShare.children:
-            shareNames = postShare_child.string.split()
-            name = shareNames[-1].lower()
-            num = "".join(shareNames[:-1])
+    try:
+        if postShare:
+            for postShare_child in postShare.children:
+                shareNames = postShare_child.string.split()
+                name = shareNames[-1].lower()
+                num = "".join(shareNames[:-1])
 
-            # fix weird ',' happening in some reaction values
-            num = num.replace(',', '.')
-            realNum = 0
-            if 'K' in num:
-                realNum = float(num[:-1]) * 1000
-            else:
-                realNum = float(num)
+                # fix weird ',' happening in some reaction values
+                num = num.replace(',', '.')
+                realNum = 0
+                if 'K' in num:
+                    realNum = float(num[:-1]) * 1000
+                else:
+                    realNum = float(num)
 
-            shares[name] = int(realNum)
+                shares[name] = int(realNum)
+    except Exception as e:
+        pass
     return shares
 
 #good
 def _extract_comments(item):
     postComments = item.find_all(attrs={"aria-label": "Comment"})
     comments = dict()
-    # print(postDict)
-    for comment in postComments:
-        if comment.find(class_="_6qw4") is None:
-            continue
+    try:
+        # print(postDict)
+        for comment in postComments:
+            if comment.find(class_="_6qw4") is None:
+                continue
 
-        commenter = comment.find(class_="_6qw4").text #name of person
-        comments[commenter] = dict()
+            commenter = comment.find(class_="_6qw4").text #name of person
+            comments[commenter] = dict()
 
-        comment_text = comment.find("span", class_="_3l3x")
+            comment_text = comment.find("span", class_="_3l3x")
 
-        if comment_text is not None:
-            comments[commenter]["text"] = comment_text.text
+            if comment_text is not None:
+                comments[commenter]["text"] = comment_text.text
 
-        comment_link = comment.find(class_="_ns_")
-        if comment_link is not None:
-            comments[commenter]["link"] = comment_link.get("href")
+            comment_link = comment.find(class_="_ns_")
+            if comment_link is not None:
+                comments[commenter]["link"] = comment_link.get("href")
 
-        comment_pic = comment.find(class_="_2txe")
-        if comment_pic is not None:
-            img_child = comment_pic.find(class_="img")
-            if img_child:
-                comments[commenter]["image"] = img_child.get("src")
+            comment_pic = comment.find(class_="_2txe")
+            if comment_pic is not None:
+                img_child = comment_pic.find(class_="img")
+                if img_child:
+                    comments[commenter]["image"] = img_child.get("src")
 
-        commentList = item.find('ul', {'class': '_7791'})
-        if commentList:
-            comments = dict()
-            comment = commentList.find_all('li') #list of comments (Big)
-            if comment:
-                for litag in comment:
-                    #litag is comment_big
-                    aria = litag.find(attrs={"aria-label": "Comment"})
-                    if aria:
-                        #host
-                        commenter = aria.find(class_="_6qw4").text
-                        comments[commenter] = dict()
-                        comment_text = litag.find("span", class_="_3l3x")
-                        if comment_text:
-                            comments[commenter]["text"] = comment_text.text
-                            # print(str(litag)+"\n")
+            commentList = item.find('ul', {'class': '_7791'})
+            if commentList:
+                comments = dict()
+                comment = commentList.find_all('li') #list of comments (Big)
+                if comment:
+                    for litag in comment:
+                        #litag is comment_big
+                        aria = litag.find(attrs={"aria-label": "Comment"})
+                        if aria:
+                            #host
+                            commenter = aria.find(class_="_6qw4").text
+                            comments[commenter] = dict()
+                            comment_text = litag.find("span", class_="_3l3x")
+                            if comment_text:
+                                comments[commenter]["text"] = comment_text.text
+                                # print(str(litag)+"\n")
 
-                        comment_link = litag.find(class_="_ns_")
-                        if comment_link is not None:
-                            comments[commenter]["link"] = comment_link.get("href")
+                            comment_link = litag.find(class_="_ns_")
+                            if comment_link is not None:
+                                comments[commenter]["link"] = comment_link.get("href")
 
-                        comment_pic = litag.find(class_="_2txe")
-                        if comment_pic is not None:
-                            img_child = comment_pic.find(class_="img")
-                            if img_child:
-                                comments[commenter]["image"] = img_child.get("src")
+                            comment_pic = litag.find(class_="_2txe")
+                            if comment_pic is not None:
+                                img_child = comment_pic.find(class_="img")
+                                if img_child:
+                                    comments[commenter]["image"] = img_child.get("src")
 
-                        repliesList = litag.find(class_="_2h2j")
-                        if repliesList:
-                            reply = repliesList.find_all('li')
-                            if reply:
-                                comments[commenter]['reply'] = dict()
-                                for litag2 in reply:
-                                    aria2 = litag2.find(attrs={"aria-label": "Comment reply"})
-                                    if aria2:
-                                        replier = aria2.find(class_="_6qw4").text
-                                        if replier:
-                                            comments[commenter]['reply'][replier] = dict()
+                            repliesList = litag.find(class_="_2h2j")
+                            if repliesList:
+                                reply = repliesList.find_all('li')
+                                if reply:
+                                    comments[commenter]['reply'] = dict()
+                                    for litag2 in reply:
+                                        aria2 = litag2.find(attrs={"aria-label": "Comment reply"})
+                                        if aria2:
+                                            replier = aria2.find(class_="_6qw4").text
+                                            if replier:
+                                                comments[commenter]['reply'][replier] = dict()
 
-                                            reply_text = litag2.find("span", class_="_3l3x")
-                                            if reply_text:
-                                                comments[commenter]['reply'][replier][
-                                                    "reply_text"] = reply_text.text
+                                                reply_text = litag2.find("span", class_="_3l3x")
+                                                if reply_text:
+                                                    comments[commenter]['reply'][replier][
+                                                        "reply_text"] = reply_text.text
 
-                                            r_link = litag2.find(class_="_ns_")
-                                            if r_link is not None:
-                                                comments[commenter]['reply']["link"] = r_link.get("href")
+                                                r_link = litag2.find(class_="_ns_")
+                                                if r_link is not None:
+                                                    comments[commenter]['reply']["link"] = r_link.get("href")
 
-                                            r_pic = litag2.find(class_="_2txe")
-                                            if r_pic is not None:
-                                                img_child = r_pic.find(class_="img")
-                                                if img_child:
-                                                    comments[commenter]['reply']["image"] = img_child.get("src")
+                                                r_pic = litag2.find(class_="_2txe")
+                                                if r_pic is not None:
+                                                    img_child = r_pic.find(class_="img")
+                                                    if img_child:
+                                                        comments[commenter]['reply']["image"] = img_child.get("src")
+    except:
+        pass
     return comments
 
 
@@ -213,33 +226,36 @@ def _extract_reaction(item):
     if not toolBar:  # pretty fun
         return
     reaction = dict()
-    for toolBar_child in toolBar.children:
-        #str = toolBar_child['data-testid']
-        #reaction = str.split("UFI2TopShare/tooltip_")[1]
+    try:
+        for toolBar_child in toolBar.children:
+            #str = toolBar_child['data-testid']
+            #reaction = str.split("UFI2TopShare/tooltip_")[1]
 
-        #reaction[reaction] = 0
+            #reaction[reaction] = 0
 
-        toolBar_child_childs = toolBar_child.contents
-        if len(toolBar_child_childs) > 0:
-            toolBar_child_child = toolBar_child_childs[0]
-            #ex. 1,2K -> 1200
-            react_vals = toolBar_child_child['aria-label'].split() #[13K, Love]
-            react_name = react_vals[-1].lower()
-            num = "".join(react_vals[:-1])
+            toolBar_child_childs = toolBar_child.contents
+            if len(toolBar_child_childs) > 0:
+                toolBar_child_child = toolBar_child_childs[0]
+                #ex. 1,2K -> 1200
+                react_vals = toolBar_child_child['aria-label'].split() #[13K, Love]
+                react_name = react_vals[-1].lower()
+                num = "".join(react_vals[:-1])
 
-            # fix weird ',' happening in some reaction values
-            num = num.replace(',', '.')
-            realNum = 0
-            if 'K' in num:
-                realNum = float(num[:-1]) * 1000
-            else:
-                realNum = float(num)
+                # fix weird ',' happening in some reaction values
+                num = num.replace(',', '.')
+                realNum = 0
+                if 'K' in num:
+                    realNum = float(num[:-1]) * 1000
+                else:
+                    realNum = float(num)
 
-            reaction[react_name] = int(realNum)
+                reaction[react_name] = int(realNum)
+    except:
+        pass
     return reaction
 
 
-def _extract_html(page, bs_data, limit_postDate):
+def _extract_html(page, bs_data, limit_postDate, scrape_comment):
 
     #Add to check
     #Temp file
@@ -269,11 +285,13 @@ def _extract_html(page, bs_data, limit_postDate):
             postDict['PostId'] = _extract_post_id(item)
             postDict['Image'] = _extract_image(item)
             postDict['Shares'] = _extract_shares(item)
-            postDict['Comments'] = _extract_comments(item)
             postDict['Reaction'] = _extract_reaction(item)
+            postDict['Comments'] = _extract_comments(item) if scrape_comment else None
 
+        # print(postDict)
         #Add to check
-        postBigDict.append(postDict)
+        if len(postDict):
+            postBigDict.append(postDict)
         #temporary file
         with open('./postBigDict.json','w', encoding='utf-8') as file:
             file.write(json.dumps(postBigDict, ensure_ascii=False).encode('utf-8').decode())
@@ -317,10 +335,12 @@ def is_valid_postDate_scroll(limit_date, browser):
 
     last_post = bs_data.find_all(class_="_5pcr userContentWrapper")[-1]
     last_postDate = _extract_postDate(last_post)
-    return last_postDate >= limit_date
+    return post_date\
+           and dt.strptime(last_postDate, "%d-%m-%Y") >= dt.strptime(limit_date, "%d-%m-%Y")
     
 def is_valid_postDate(limit_date, post_date):
-    return post_date >= limit_date
+    return post_date\
+           and dt.strptime(post_date, "%d-%m-%Y") >= dt.strptime(limit_date, "%d-%m-%Y")
     
 
 """
@@ -400,6 +420,8 @@ def show_up_SeeMoreCmt(browser):
 def extract(browser, page, numOfPost, limit_postDate, infinite_scroll=False, scrape_comment=False):
     assert limit_postDate, "limit_postDate must be defined"
     
+    browser.get(page)
+
     lenOfPage = _count_needed_scrolls(browser, infinite_scroll, numOfPost)
     _scroll(browser, infinite_scroll, lenOfPage, limit_postDate)
 
@@ -418,9 +440,47 @@ def extract(browser, page, numOfPost, limit_postDate, infinite_scroll=False, scr
     # Throw your source into BeautifulSoup and start parsing!
     bs_data = bs(source_data, 'html.parser')
 
-    postBigDict, name_group = _extract_html(page, bs_data, limit_postDate)
+    postBigDict, name_group = _extract_html(page, bs_data, limit_postDate, scrape_comment)
 
     return postBigDict, name_group
+
+def get_post_links(browser):
+    bs_data = bs(browser.page_source, 'html.parser')
+    items = bs_data.find_all("div", class_="_4bl9 _4ox_")
+    post_links = [urljoin("https://www.facebook.com/", item.find("a")["href"])\
+                  for item in items]
+    return post_links
+
+def extract_sales(browser, page, numOfPost, limit_postDate, infinite_scroll=False, scrape_comment=False):
+    # Change
+    # ori_links = [page + "/for_sale_search/?forsalesearchtype=for_sale&availability=available&query=căn%20hộ&epa=SEARCH_BOX"\
+    #             , page + "/for_sale_search/?forsalesearchtype=for_sale&availability=available&query=chung%20cư&epa=SEARCH_BOX"\
+    #             , page + "/for_sale_search/?forsalesearchtype=for_sale&availability=available&query=Studio&epa=SEARCH_BOX"\
+    #             , page + "/for_sale_search/?forsalesearchtype=for_sale&availability=available&query=Officetel&epa=SEARCH_BOX"\
+    #             , page + "/for_sale_search/?forsalesearchtype=for_sale&availability=available&query=Condotel&epa=SEARCH_BOX"]
+    
+    ori_links = [page + "/for_sale_search/?forsalesearchtype=for_sale&availability=available&query=Shophouse&epa=SEARCH_BOX"\
+                , page + "/for_sale_search/?forsalesearchtype=for_sale&availability=available&query=Dualkey&epa=SEARCH_BOX"\
+                , page + "/for_sale_search/?forsalesearchtype=for_sale&availability=available&query=Dual%20Key&epa=SEARCH_BOX"\
+                , page + "/for_sale_search/?forsalesearchtype=for_sale&availability=available&query=Duplex&epa=SEARCH_BOX"\
+                , page + "/for_sale_search/?forsalesearchtype=for_sale&availability=available&query=Penthouse&epa=SEARCH_BOX"\
+                , page + "/for_sale_search/?forsalesearchtype=for_sale&availability=available&query=Pent%20house&epa=SEARCH_BOX"\
+                , page + "/for_sale_search/?forsalesearchtype=for_sale&availability=available&query=Sky%20Villa&epa=SEARCH_BOX"]
+
+    postBigDictSales = []
+    for ori_link in ori_links:
+        browser.get(ori_link)
+        lenOfPage = _count_needed_scrolls(browser, infinite_scroll, numOfPost)
+        _scroll(browser, infinite_scroll, lenOfPage, limit_postDate)
+        post_links = get_post_links(browser)
+        for post_link in post_links:
+            browser.get(post_link)
+            time.sleep(0.3)
+            bs_post = bs(browser.page_source, 'html.parser')
+            postBigDict, name_group = _extract_html(post_link, bs_post, limit_postDate, scrape_comment)
+            postBigDictSales += postBigDict
+
+    return postBigDictSales, name_group
 
 def crawl_input_parser():
     parser = argparse.ArgumentParser(description="Facebook Page Scraper")
@@ -473,7 +533,6 @@ def crawl_input_parser():
     #  should be in the same folder as file
     browser = webdriver.Chrome(executable_path="/home/khacquy/chromedriver_linux64_/chromedriver", options=option)
     _login(browser, email, password) #login or not: comment to not login.
-    browser.get(link)
 
     postBigDict, name_group = extract(browser=browser, page=link, numOfPost=args.len\
                           , infinite_scroll=infinite, scrape_comment=scrape_comment\
@@ -540,11 +599,21 @@ def crawl_input_files():
             link = link.strip()
             link = link[:-1] if link[-1] == "/" else link
             
-            browser.get(link)
-            
-            postBigDict, name_group = extract(browser=browser, page=link, numOfPost=args['len']\
+            # postBigDictAnnounce = []
+            #test
+            print("postBigDictAnnounce")
+            postBigDictAnnounce, name_group = extract(browser=browser, page=link, numOfPost=args['len']\
                                 , infinite_scroll=infinite, scrape_comment=scrape_comment\
                                 , limit_postDate=limit_postDate)
+
+            postBigDictSales = []
+            print("postBigDictSales")
+            #test
+            # postBigDictSales, name_group = extract_sales(browser=browser, page=link, numOfPost=args['len']\
+            #                     , infinite_scroll=infinite, scrape_comment=scrape_comment\
+            #                     , limit_postDate=limit_postDate)
+
+            postBigDict = postBigDictAnnounce + postBigDictSales
 
             #remove noise chars
             fout_name = re.sub("\W+", "_", link.split('/')[-1].lower())
